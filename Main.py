@@ -1,5 +1,5 @@
-from Decoder import run_decoding
-
+from Decoding import run_decoding
+from Encoding import run_encoding
 
 def main():
 
@@ -10,9 +10,7 @@ def main():
     choice = input("Choose an operation: ")
 
     if choice == "1":
-        print("Encoding will be implemented here.")
-
-        # TODO: Call the encoding function here
+        run_encoding()
 
     elif choice == "2":
         run_decoding()
