@@ -4,24 +4,27 @@ import math
 import json
 import os
 def read_image(name):
-    img = Image.open(name).convert("L")
-    img_array = np.array(img)
-    return img_array
+    with Image.open(name) as img:
+        if img.mode not in ("L", "RGB"):
+            raise ValueError('Input image mode must be "L" or "RGB".')
+        return img.mode, np.array(img)
 
 def pad_image(img_array, block_height, block_width):
-    height, width = img_array.shape
+    height, width = img_array.shape[:2]
     padding_width = (block_width - (width % block_width)) % block_width
     padding_height = (block_height - (height % block_height)) % block_height
 
-    padded_img = np.pad(img_array, pad_width = ((0, padding_height), (0, padding_width)), mode='edge')
+    if img_array.ndim == 2:
+        pad_width = ((0, padding_height), (0, padding_width))
+    else:
+        pad_width = ((0, padding_height), (0, padding_width), (0, 0))
+    padded_img = np.pad(img_array, pad_width=pad_width, mode='edge')
     
     return padded_img, (height, width)
 
 def extract_vectors(image, block_height, block_width):
-    height, width = image.shape
+    height, width = image.shape[:2]
     vectors = []
-    x = 0
-    y = 0
     for x in range(0, height, block_height):
         for y in range(0, width, block_width):
             vector = image[x : x + block_height, y : y + block_width]
@@ -78,9 +81,12 @@ def update_centroids(groups, codebook):
     return np.array(newcodebook, dtype=float)
 
 def generate_codebook(vectors, K):
+    if type(K) is not int or K < 1:
+        raise ValueError("K must be a positive integer.")
+
     codebook = np.mean(vectors, axis = 0, keepdims = True)
     while len(codebook) < K:
-        codebook = split_codebook(codebook)
+        codebook = split_codebook(codebook)[:K]
 
         groups, assignments = assign_vectors(vectors, codebook)
 
@@ -129,12 +135,18 @@ def write_vector_bitstream(file, indices, K):
 def write_codebook(filename, codebook, original_height,
                         original_width, vector_height, vector_width, mode="L"):
 
+    if mode not in ("L", "RGB"):
+        raise ValueError('Image mode must be "L" or "RGB".')
+
     codebook = np.asarray(codebook, dtype=float)
 
     K = len(codebook)
 
     codebook = np.clip(np.rint(codebook), 0, 255).astype(np.uint8)
-    codebook = codebook.reshape(K, vector_height, vector_width)
+    if mode == "RGB":
+        codebook = codebook.reshape(K, vector_height, vector_width, 3)
+    else:
+        codebook = codebook.reshape(K, vector_height, vector_width)
 
     data = {
         "mode": mode,
@@ -153,14 +165,27 @@ def write_codebook(filename, codebook, original_height,
         json.dump(data, file, indent=4)
 
 def compress(img, blockHeight, blockWidth, K, codebookfilename, comprfilename):
-    img = read_image(img)
-    orgHeight, orgWidth = img.shape
-    paddedimg, _ = pad_image(img , blockHeight, blockWidth)
+    if blockHeight <= 0 or blockWidth <= 0:
+        raise ValueError("block dimensions must be positive")
+    if type(K) is not int or K < 1:
+        raise ValueError("K must be a positive integer.")
+
+    mode, img_array = read_image(img)
+    orgHeight, orgWidth = img_array.shape[:2]
+    paddedimg, _ = pad_image(img_array, blockHeight, blockWidth)
     vectors = extract_vectors(paddedimg, blockHeight, blockWidth)
     codebook = generate_codebook(vectors, K)
 
     codebook = np.clip(np.rint(codebook), 0, 255).astype(np.uint8)
-    write_codebook(codebookfilename, codebook, orgHeight, orgWidth, blockHeight, blockWidth, mode="L")
+    write_codebook(
+        codebookfilename,
+        codebook,
+        orgHeight,
+        orgWidth,
+        blockHeight,
+        blockWidth,
+        mode=mode,
+    )
     
     _, indices = assign_vectors(vectors, codebook)
     with open(comprfilename, "wb") as file:
@@ -186,21 +211,18 @@ def run_encoding():
 
         K = int(input("enter number of codebook vectors (K): "))
 
-        if K < 1 or (K & (K - 1)) != 0:
-            raise ValueError("K must be a positive power of 2.")
+        if K < 1:
+            raise ValueError("K must be a positive integer.")
 
-        img = read_image(image_path)
+        mode, img = read_image(image_path)
 
-        height, width = img.shape
+        height, width = img.shape[:2]
 
         padded_height = ((height + block_height - 1) // block_height) * block_height
 
         padded_width = ((width + block_width - 1) // block_width) * block_width
 
         number_of_blocks = ((padded_height // block_height) * (padded_width // block_width))
-
-        if K > number_of_blocks:
-            raise ValueError("K cannot exceed the number of image blocks.")
 
         codebook_filename = "codebook.json"
         compressed_filename = "compressed_image.bin"
@@ -220,6 +242,7 @@ def run_encoding():
         print("Block dimensions:", block_height, "x", block_width)
         print("Number of blocks:", number_of_blocks)
         print("Codebook size:", K)
+        print("Image mode:", mode)
 
         print("\nGenerated files:")
 
