@@ -237,11 +237,13 @@ def save_image(image, mode):
 
 # 7. Run the decoder using a codebook JSON file and a binary index file.
 def run_decoding():
-    print("\n===== Vector Quantization Decoder =====")
+    print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
+    print("⋆⋅☆⋅⋆       Vector Quantization Decompression       ⋆⋅☆⋅⋆")
+    print("─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
 
     try:
-        codebook_filename = input("\nEnter Codebook JSON filename: ").strip()
-        binary_filename = input("Enter Compressed Image Binary filename: ").strip()
+        codebook_filename = input("\n⚝ Enter Codebook JSON filename: ").strip()
+        binary_filename = input("⚝ Enter Compressed Image Binary filename: ").strip()
         if not codebook_filename or not binary_filename:
             raise ValueError("Both input filenames are required.")
 
@@ -280,13 +282,25 @@ def run_decoding():
 
         save_image(image, metadata["mode"])
 
-        print("\nDecoding completed successfully!")
-        print("Image mode:", metadata["mode"])
-        print("Vector dimensions:", vector_height, "x", vector_width)
-        print("Reconstructed image dimensions:", original_height, "x", original_width)
-        print("\nReconstructed pixel matrix:")
+        save_image(image, metadata["mode"])
+
+        print("\n಄ Decompression completed successfully!")
+
+        print("\n಄ Image Information:")
+        print("   • Image mode:", metadata["mode"])
+        print("   • Vector dimensions:", vector_height, "x", vector_width)
+        print("   • Reconstructed dimensions:",original_height, "x", original_width)
+
+        print("\n಄ Output Files:")
+        print("   ❥ output/reconstructed_image.png")
+        print("   ❥ output/reconstructed_image.json")
+
+        print("\n಄ Reconstructed Pixel Matrix:")
+
         for row in image:
             print(row)
+
+        print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
 
     except (
         EOFError,
@@ -295,7 +309,8 @@ def run_decoding():
         TypeError,
         ValueError,
     ) as error:
-        print("\nError:", error)
+        print("\n✮⋆˙ Decompression Error:", error)
+        print("Please try again.")
 
 
 if __name__ == "__main__":

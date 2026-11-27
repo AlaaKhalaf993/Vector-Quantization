@@ -3,31 +3,103 @@ import numpy as np
 import math
 import json
 import os
-from CompressionRatio import calculate_compression_ratio
 
+#compression ratio function
+def getRatio(codebookfilename, comprfilename):
 
-def read_image(name):
-    with Image.open(name) as img:
-        if img.mode not in ("L", "RGB"):
-            raise ValueError('Input image mode must be "L" or "RGB".')
-        return img.mode, np.array(img)
+    with open(codebookfilename, "r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    height = data["original_height"]
+    width = data["original_width"]
+    vector_height = data["vector_height"]
+    vector_width = data["vector_width"]
+    K = data["number_of_codebooks"]
+    mode = data["mode"]
+
+    if mode == "L":
+        bits_per_pixel = 8
+    elif mode == "RGB":
+        bits_per_pixel = 24
+    else:
+        raise ValueError("Unsupported image mode.")
+
+    original_bits = height * width * bits_per_pixel
+
+    block_rows = (height + vector_height - 1) // vector_height
+    block_cols = (width + vector_width - 1) // vector_width
+
+    number_of_blocks = block_rows * block_cols
+
+    bits_per_index = (K - 1).bit_length()
+
+    labels_bits = number_of_blocks * bits_per_index
+
+    codebook_bits = (K * vector_height * vector_width * bits_per_pixel)
+
+    compressed_bits = codebook_bits + labels_bits
+
+    ratio = original_bits / compressed_bits
+
+    change = ((original_bits - compressed_bits) / original_bits) * 100
+
+    direction = "decreased" if change >= 0 else "increased"
+    emoji = "(:" if change >= 0 else "):"
+
+    print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
+    print("Vector Quantization - Compression Ratio")
+    print("─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
+
+    print(f"\n.⋆❀° Original image size: {height} x {width} x {bits_per_pixel} = {original_bits} bits")
+
+    print(f".⋆❀° Number of blocks: {block_rows} x {block_cols} = {number_of_blocks}")
+
+    print(f".⋆❀° Bits per label: {bits_per_index} bits")
+
+    print(f".⋆❀° Labels size: {number_of_blocks} x {bits_per_index} = {labels_bits} bits")
+
+    print(f".⋆❀° Codebook size: {K} x {vector_height} x {vector_width} x {bits_per_pixel} = {codebook_bits} bits")
+
+    print(f".⋆❀° Total compressed size: {codebook_bits} + {labels_bits} = {compressed_bits} bits")
+
+    print(f"\n.⋆❀° Compression Ratio = {original_bits}/{compressed_bits} = {ratio:.2f}:1")
+
+    print(f"Size {direction} by {abs(change):.2f}% {emoji}!")
+
+    codebook_file_size = os.path.getsize(codebookfilename)
+    compressed_file_size = os.path.getsize(comprfilename)
+
+    print("\n಄ Actual generated file sizes:")
+    print(f"   ❥ Codebook JSON: {codebook_file_size} bytes")
+    print(f"   ❥ Compressed BIN: {compressed_file_size} bytes")
+
+    print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
+
+    return ratio
+
+def read_image(name, mode):
+    img = Image.open(name).convert(mode)
+    img_array = np.array(img)
+    return img_array
 
 def pad_image(img_array, block_height, block_width):
     height, width = img_array.shape[:2]
     padding_width = (block_width - (width % block_width)) % block_width
     padding_height = (block_height - (height % block_height)) % block_height
 
-    if img_array.ndim == 2:
-        pad_width = ((0, padding_height), (0, padding_width))
-    else:
-        pad_width = ((0, padding_height), (0, padding_width), (0, 0))
-    padded_img = np.pad(img_array, pad_width=pad_width, mode='edge')
+    padWidth = (0, padding_height), (0, padding_width)
+    if img_array.ndim == 3:
+        padWidth += ((0, 0),)
+    
+    padded_img = np.pad(img_array, pad_width = padWidth, mode='edge')
     
     return padded_img, (height, width)
 
 def extract_vectors(image, block_height, block_width):
     height, width = image.shape[:2]
     vectors = []
+    x = 0
+    y = 0
     for x in range(0, height, block_height):
         for y in range(0, width, block_width):
             vector = image[x : x + block_height, y : y + block_width]
@@ -84,12 +156,9 @@ def update_centroids(groups, codebook):
     return np.array(newcodebook, dtype=float)
 
 def generate_codebook(vectors, K):
-    if type(K) is not int or K < 1:
-        raise ValueError("K must be a positive integer.")
-
     codebook = np.mean(vectors, axis = 0, keepdims = True)
     while len(codebook) < K:
-        codebook = split_codebook(codebook)[:K]
+        codebook = split_codebook(codebook)
 
         groups, assignments = assign_vectors(vectors, codebook)
 
@@ -138,18 +207,17 @@ def write_vector_bitstream(file, indices, K):
 def write_codebook(filename, codebook, original_height,
                         original_width, vector_height, vector_width, mode="L"):
 
-    if mode not in ("L", "RGB"):
-        raise ValueError('Image mode must be "L" or "RGB".')
-
     codebook = np.asarray(codebook, dtype=float)
 
     K = len(codebook)
 
     codebook = np.clip(np.rint(codebook), 0, 255).astype(np.uint8)
-    if mode == "RGB":
-        codebook = codebook.reshape(K, vector_height, vector_width, 3)
-    else:
+
+    if mode == "L":
         codebook = codebook.reshape(K, vector_height, vector_width)
+
+    elif mode == "RGB":
+        codebook = codebook.reshape(K, vector_height, vector_width, 3)
 
     data = {
         "mode": mode,
@@ -167,59 +235,59 @@ def write_codebook(filename, codebook, original_height,
     with open(filename, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4)
 
-def compress(img, blockHeight, blockWidth, K, codebookfilename, comprfilename):
-    if blockHeight <= 0 or blockWidth <= 0:
-        raise ValueError("block dimensions must be positive")
-    if type(K) is not int or K < 1:
-        raise ValueError("K must be a positive integer.")
-
-    mode, img_array = read_image(img)
-    orgHeight, orgWidth = img_array.shape[:2]
-    paddedimg, _ = pad_image(img_array, blockHeight, blockWidth)
+def compress(img, blockHeight, blockWidth, K, codebookfilename, comprfilename, mode):
+    img = read_image(img, mode)
+    orgHeight, orgWidth = img.shape[:2]
+    paddedimg, _ = pad_image(img , blockHeight, blockWidth)
     vectors = extract_vectors(paddedimg, blockHeight, blockWidth)
     codebook = generate_codebook(vectors, K)
 
     codebook = np.clip(np.rint(codebook), 0, 255).astype(np.uint8)
-    write_codebook(
-        codebookfilename,
-        codebook,
-        orgHeight,
-        orgWidth,
-        blockHeight,
-        blockWidth,
-        mode=mode,
-    )
+    write_codebook(codebookfilename, codebook, orgHeight, orgWidth, blockHeight, blockWidth, mode)
     
     _, indices = assign_vectors(vectors, codebook)
     with open(comprfilename, "wb") as file:
         write_vector_bitstream(file, indices, K)
 
-    return calculate_compression_ratio(img, codebookfilename, comprfilename)
-
-
 
 def run_encoding():
 
-    print("===== Vector Quantization Compression =====")
+    print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
+    print("⋆⋅☆⋅⋆       Vector Quantization Compression       ⋆⋅☆⋅⋆")
+    print("─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
 
     try:
-        image_path = input("Enter image filename: ").strip()
+
+        image_path = input("\n⚝ Enter image filename: ").strip()
 
         if not os.path.isfile(image_path):
             raise FileNotFoundError("Image file not found.")
 
-        block_height = int(input("Enter block height: "))
-        block_width = int(input("Enter block width: "))
+        print("\n⚝ Select image mode:")
+        print("   1- Grayscale")
+        print("   2- RGB")
+
+        mode_choice = input("Enter choice: ").strip()
+        if mode_choice == "1":
+            mode = "L"
+        elif mode_choice == "2":
+            mode = "RGB"
+
+        else:
+            raise ValueError("Invalid image mode selection.")
+    
+        block_height = int(input("⚝ Enter block height: "))
+        block_width = int(input("⚝ Enter block width: "))
 
         if block_height <= 0 or block_width <= 0:
-            raise ValueError("block dimensions must be positive")
+            raise ValueError("Block dimensions must be positive.")
 
-        K = int(input("enter number of codebook vectors (K): "))
+        K = int(input("⚝ Enter number of codebook vectors (K): "))
 
         if K < 1:
-            raise ValueError("K must be a positive integer.")
+            raise ValueError("K must be larger than 1")
 
-        mode, img = read_image(image_path)
+        img = read_image(image_path, mode)
 
         height, width = img.shape[:2]
 
@@ -229,17 +297,14 @@ def run_encoding():
 
         number_of_blocks = ((padded_height // block_height) * (padded_width // block_width))
 
-        codebook_filename = "codebook.json"
-        compressed_filename = "compressed_image.bin"
+        if K > number_of_blocks:
+            raise ValueError("K cannot exceed the number of image blocks.")
 
-        compression_ratio = compress(
-            image_path,
-            block_height,
-            block_width,
-            K,
-            codebook_filename,
-            compressed_filename,
-        )
+        codebook_filename = input("⚝ Enter what you'd like to name codebook file (include .json): ")
+        compressed_filename = input("⚝ Enter what you'd like to name compressed image file (include .bin): ")
+
+        compress(image_path, block_height, block_width, K, codebook_filename, compressed_filename, mode)
+        getRatio(codebook_filename, compressed_filename)
 
         if not os.path.isfile(codebook_filename):
             raise RuntimeError("Codebook file was not created.")
@@ -247,25 +312,31 @@ def run_encoding():
         if not os.path.isfile(compressed_filename):
             raise RuntimeError("Compressed image file was not created.")
 
-        print("\n===== Compression Completed =====")
+        print("\n಄ Compression completed successfully!")
 
-        print("Original image dimensions:", height, "x", width)
-        print("Padded image dimensions:", padded_height, "x", padded_width)
-        print("Block dimensions:", block_height, "x", block_width)
-        print("Number of blocks:", number_of_blocks)
-        print("Codebook size:", K)
-        print("Image mode:", mode)
+        print("\n಄ Image Information:")
+        print("   • Original dimensions:", height, "x", width)
+        print("   • Padded dimensions:", padded_height, "x", padded_width)
+        print("   • Block dimensions:", block_height, "x", block_width)
+        print("   • Number of blocks:", number_of_blocks)
+        print("   • Codebook size:", K)
 
-        print("\nGenerated files:")
+        print("\n಄ Generated Files:")
+        print(
+            "   ❥", codebook_filename,
+            "-", os.path.getsize(codebook_filename), "bytes"
+        )
+        print(
+            "   ❥", compressed_filename,
+            "-", os.path.getsize(compressed_filename), "bytes"
+        )
 
-        print(codebook_filename, "-", os.path.getsize(codebook_filename), "bytes")
+        print("\n─── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───── ⋆⋅☆⋅⋆ ───")
 
-        print(compressed_filename, "-", os.path.getsize(compressed_filename), "bytes")
-        print("Compression ratio:", f"{compression_ratio:.2f}:1")
+    except (ValueError, FileNotFoundError, OSError, RuntimeError) as error:
 
-    except(ValueError, FileNotFoundError, OSError, RuntimeError) as error:
-        print("\nCompression Error:", error)
-
+        print("\n✮⋆˙ Compression Error:", error)
+        print("Please try again.")
 
 if __name__ == "__main__":
     run_encoding()
