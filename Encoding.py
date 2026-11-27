@@ -3,6 +3,9 @@ import numpy as np
 import math
 import json
 import os
+from CompressionRatio import calculate_compression_ratio
+
+
 def read_image(name):
     with Image.open(name) as img:
         if img.mode not in ("L", "RGB"):
@@ -191,6 +194,8 @@ def compress(img, blockHeight, blockWidth, K, codebookfilename, comprfilename):
     with open(comprfilename, "wb") as file:
         write_vector_bitstream(file, indices, K)
 
+    return calculate_compression_ratio(img, codebookfilename, comprfilename)
+
 
 
 def run_encoding():
@@ -227,7 +232,14 @@ def run_encoding():
         codebook_filename = "codebook.json"
         compressed_filename = "compressed_image.bin"
 
-        compress(image_path, block_height, block_width, K, codebook_filename, compressed_filename)
+        compression_ratio = compress(
+            image_path,
+            block_height,
+            block_width,
+            K,
+            codebook_filename,
+            compressed_filename,
+        )
 
         if not os.path.isfile(codebook_filename):
             raise RuntimeError("Codebook file was not created.")
@@ -249,6 +261,7 @@ def run_encoding():
         print(codebook_filename, "-", os.path.getsize(codebook_filename), "bytes")
 
         print(compressed_filename, "-", os.path.getsize(compressed_filename), "bytes")
+        print("Compression ratio:", f"{compression_ratio:.2f}:1")
 
     except(ValueError, FileNotFoundError, OSError, RuntimeError) as error:
         print("\nCompression Error:", error)

@@ -11,10 +11,11 @@ Run the encoder directly:
 python Encoding.py
 ```
 
-Or run `python Main.py` and choose `1`. Enter the image filename, vector
-(block) height, vector width, and codebook size `K` when prompted. The encoder
-supports Pillow `L` (grayscale) and `RGB` images. `K` must be a positive
-integer; it does not need to be a power of two.
+Or run `python Main.py` and choose `1`. The main menu repeats after each
+operation; choose `3` to exit. Enter the image filename, vector (block) height,
+vector width, and codebook size `K` when prompted. The encoder supports Pillow
+`L` (grayscale) and `RGB` images. `K` must be a positive integer; it does not
+need to be a power of two.
 
 If the image dimensions are not divisible by the vector dimensions, the
 encoder pads the bottom and right edges. The decoder removes this padding
@@ -28,6 +29,9 @@ integers; RGB pixels are `[R, G, B]` lists.
 The binary file contains only codebook indices in row-major order. Each index
 uses `(K - 1).bit_length()` bits, packed MSB-first with zero padding at the
 end of the final byte when needed. For `K = 1`, the binary file is empty.
+After encoding, the compression ratio is reported as the original image file
+size divided by the combined sizes of the codebook JSON and compressed binary
+file. A ratio above `1:1` means the output files are smaller than the input.
 
 ## Decode an image
 
